@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Square-Filling Motifs</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Hilbert-style square-filling curve motifs (OEIS A350148): every motif up to 9×9, samples to 13×13, their iterates, and the new counts a(6)–a(8).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Karla:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout: a header, then the viewer (large iterate canvas beside the motif and its controls), a gallery strip of
+   the current grid size and mode, the torus/zipper explanation, and the counts table. Canvases are dark "plates"
+   in both themes; the page around them follows the theme. */
+:root {
+  --bg: #f1efe9;
+  --surface: #faf9f6;
+  --fg: #1d1f24;
+  --muted: #5d6170;
+  --line: #d9d5ca;
+  --accent: #9a4b14;
+  --accent-soft: #f3e3d3;
+  --new: #0f6e5a;
+  --plate: #12151c;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: "Karla", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101216; --surface: #171a20; --fg: #e8e6e1; --muted: #9a9ca6; --line: #2a2e37;
+    --accent: #f0a86a; --accent-soft: #3a2817; --new: #5fd0b4; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101216; --surface: #171a20; --fg: #e8e6e1; --muted: #9a9ca6; --line: #2a2e37;
+  --accent: #f0a86a; --accent-soft: #3a2817; --new: #5fd0b4; color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; display: flex; flex-direction: column; gap: 40px; }
+a { color: var(--accent); }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.eyebrow a { color: inherit; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(32px, 5vw, 48px); line-height: 1.02; margin: 0 0 14px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 1.15; margin: 0 0 10px; text-wrap: balance; }
+h3 { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin: 0 0 6px; }
+p { margin: 0; max-width: 70ch; }
+.lede { color: var(--muted); font-size: 16.5px; }
+.lede b { color: var(--fg); font-weight: 600; }
+.mono { font-family: var(--font-mono); font-size: .9em; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* viewer */
+.viewer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .viewer { grid-template-columns: minmax(0, 1fr); } }
+.plate { background: var(--plate); border-radius: 6px; position: relative; overflow: hidden; }
+.plate canvas { display: block; width: 100%; height: 100%; }
+#big { aspect-ratio: 1; max-width: 100%; }
+.plate .cap { position: absolute; left: 12px; bottom: 10px; font-family: var(--font-mono); font-size: 12px; color: #c9ccd6; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+#small { aspect-ratio: 1; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.row > .lbl { color: var(--muted); font-size: 13px; min-width: 64px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--fg); padding: 5px 10px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+select, .btn { font: inherit; font-size: 13px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
+select { max-width: 100%; }
+.btn { cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.meta { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 500; }
+input[type=range] { accent-color: var(--accent); width: 130px; }
+
+/* gallery */
+.gallery-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+.gallery button { padding: 0; border: 2px solid transparent; border-radius: 6px; background: var(--plate); cursor: pointer; aspect-ratio: 1; overflow: hidden; }
+.gallery button[aria-current="true"] { border-color: var(--accent); }
+.gallery canvas { width: 100%; height: 100%; display: block; }
+
+/* explanation */
+.explain { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .explain { grid-template-columns: minmax(0, 1fr); } }
+.explain .text { display: flex; flex-direction: column; gap: 12px; }
+#torus { aspect-ratio: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+
+/* counts */
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+td.num { font-family: var(--font-mono); font-size: 13px; text-align: right; white-space: nowrap; }
+td.modes { font-size: 13px; color: var(--muted); }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--new); border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; margin-left: 6px; vertical-align: 1px; }
+.bars { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.bar { display: grid; grid-template-columns: 8.5em 1fr; gap: 8px; align-items: center; font-family: var(--font-mono); font-size: 11px; }
+.bar i { display: block; height: 7px; background: var(--accent); border-radius: 2px; min-width: 2px; }
+footer { color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 8px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow"><a href="https://oeis.org/A350148">OEIS A350148</a> · new terms a(6), a(7), a(8)</p>
+    <h1>Square-filling motifs</h1>
+    <p class="lede">A <b>motif</b> is a path through an n×n grid of tiles that runs along tile edges from one bottom corner
+      to the other, using exactly one edge of every tile. Replace each tile by a shrunken, turned copy of the motif and
+      repeat: you get a curve that fills the square. Most motifs crash into themselves after one or two rounds. McKenna
+      calls the ones that never do <b>globally self-avoiding</b>; there is 1 on the 5×5 grid, 7 on 7×7, 10,101 on 9×9 and
+      20,305,328 on 11×11. We counted 13×13, 15×15 and 17×17.</p>
+  </header>
+
+  <section class="viewer" aria-label="Motif viewer">
+    <div class="plate" id="big"><canvas id="cv-big" aria-label="The selected motif, iterated"></canvas><span class="cap" id="cap-big"></span></div>
+    <div class="side">
+      <div class="plate" id="small"><canvas id="cv-small" aria-label="The selected motif, with each tile's edge marked"></canvas><span class="cap" id="cap-small"></span></div>
+      <div class="panel">
+        <div class="row"><span class="lbl">Grid</span><div class="seg" id="seg-n" role="group" aria-label="Grid size"></div></div>
+        <div class="row"><span class="lbl">Mode</span><select id="sel-mode" aria-label="Zipping mode"></select></div>
+        <div class="row"><span class="lbl">Motif</span>
+          <button class="btn" id="prev" type="button" aria-label="Previous motif">←</button>
+          <button class="btn primary" id="rand" type="button">Random</button>
+          <button class="btn" id="next" type="button" aria-label="Next motif">→</button>
+          <span class="meta" id="pos"></span></div>
+        <div class="row"><span class="lbl">Iterate</span><input type="range" id="k" min="1" max="4" value="2" aria-label="Number of iterations"><span class="meta" id="k-out"></span></div>
+        <div class="row"><span class="lbl">Colour</span><div class="seg" id="seg-fill" role="group" aria-label="Tile colouring">
+          <button type="button" data-v="order" aria-pressed="true">Along the curve</button><button type="button" data-v="parity">Inside/outside</button><button type="button" data-v="none">Path only</button></div></div>
+        <div class="row"><span class="lbl">Path</span><div class="seg" id="seg-path" role="group" aria-label="Path drawing">
+          <button type="button" data-v="on" aria-pressed="true">Show</button><button type="button" data-v="off">Hide</button></div>
+          <button class="btn" id="trace" type="button">Trace it</button></div>
+        <p class="meta" id="count-line"></p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="gal-h">
+    <div class="gallery-head">
+      <h2 id="gal-h">More motifs like it</h2>
+      <span class="meta" id="gal-meta"></span>
+    </div>
+    <div class="gallery" id="gallery"></div>
+  </section>
+
+  <section class="explain" aria-labelledby="ex-h">
+    <div class="plate" id="torus"><canvas id="cv-torus" aria-label="The motif repeated in a 3 by 3 block, showing the torus cycle and frozen boundary"></canvas></div>
+    <div class="text">
+      <h2 id="ex-h">Why it can be counted</h2>
+      <p>Each tile owns one of its edges, and the direction the path runs along it says which side of the path the tile
+        is on. That is the inside/outside colouring above: two neighbouring tiles differ exactly when the path runs
+        between them.</p>
+      <p>McKenna proved two facts that make the problem finite. A globally self-avoiding motif, laid on a torus by
+        gluing opposite sides of the square, is a single loop through every lattice point (left: the motif and its
+        eight neighbours, centre copy bright). And its whole outer ring of tiles is fixed by one of a few
+        <b>zipping modes</b>, a palindromic string of bits with no two 1s together (shown up the left side). The bits
+        say where the path steps off the outer track and back.</p>
+      <p>With the ring fixed, what remains is a planar puzzle: give every inner tile one edge so that the edges form a
+        single path through every interior point. A transfer matrix counts those row by row without listing them.
+        11×11 takes a tenth of a second (McKenna's listing took 147 CPU-hours), 13×13 eleven seconds, 15×15 nine minutes.</p>
+      <div class="legend"><span><i class="sw" style="background:#5b6b8c"></i>frozen ring</span><span><i class="sw" style="background:#f2b134"></i>1 bits (zipper)</span><span><i class="sw" style="background:#e4d6bc"></i>centre copy</span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="cnt-h">
+    <h2 id="cnt-h">How many there are</h2>
+    <p class="lede" style="margin-bottom:14px">Counted per zipping mode; mirror images are not counted separately
+      (every motif is either left- or right-handed). Bars show each mode's share, on a log scale.</p>
+    <div class="tablebox"><table>
+      <thead><tr><th>n</th><th>Grid</th><th style="text-align:right">a(n)</th><th>By zipping mode</th></tr></thead>
+      <tbody id="counts"></tbody>
+    </table></div>
+  </section>
+
+  <footer>
+    <p>Motifs up to 9×9 are all of them; 11×11 and 13×13 show uniform random samples. Every motif shown was checked with a
+      direct test that its iterates never self-contact. Terms, code and checks:
+      <a href="https://github.com/guillochon/oeis-results/tree/main/A350148">oeis-results/A350148</a>.
+      Motifs, modes and the two theorems used: D. M. McKenna,
+      <a href="https://doi.org/10.54550/ECA2022V2S2R13">Fibbinary zippers in a monoid of toroidal Hamiltonian cycles
+      that generate Hilbert-style square-filling curves</a>, Enumerative Combinatorics and Applications 2:2 (2022).</p>
+    <p>Made by James Guillochon with Claude.</p>
+  </footer>
+</div>
+
+<script src="motifs.js"></script>
+<script>
+(() => {
+"use strict";
+const D = window.MOTIF_DATA;
+const NAMES = "BRTLbrtl";
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- motif geometry ---------- */
+// segment of tile type t at cell (x, y): [x0, y0, x1, y1] in the path's direction
+function seg(x, y, t) {
+  const o = t & 3;
+  let s;
+  if (o === 0) s = [x, y, x + 1, y];
+  else if (o === 1) s = [x + 1, y, x + 1, y + 1];
+  else if (o === 2) s = [x + 1, y + 1, x, y + 1];
+  else s = [x, y + 1, x, y];
+  return t >= 4 ? [s[2], s[3], s[0], s[1]] : s;
+}
+function parse(word) { const a = new Uint8Array(word.length); for (let i = 0; i < word.length; i++) a[i] = NAMES.indexOf(word[i]); return a; }
+
+// thread order of a motif: cell indices from a = (0, 0)
+function threadOrder(n, types) {
+  const byStart = new Map();
+  for (let i = 0; i < n * n; i++) { const s = seg(i % n, (i / n) | 0, types[i]); byStart.set(s[0] * 1000 + s[1], i); }
+  const order = new Int32Array(n * n);
+  let px = 0, py = 0;
+  for (let k = 0; k < n * n; k++) {
+    const i = byStart.get(px * 1000 + py);
+    order[k] = i;
+    const s = seg(i % n, (i / n) | 0, types[i]);
+    px = s[2]; py = s[3];
+  }
+  return order;
+}
+
+// G placed in a tile of type t: types and thread order, in local cells
+function placements(n, G, order) {
+  const out = [];
+  for (let t = 0; t < 8; t++) {
+    const o = t & 3, back = t >= 4;
+    const types = new Uint8Array(n * n), ord = new Int32Array(n * n), map = new Int32Array(n * n);
+    for (let i = 0; i < n * n; i++) {
+      let x = i % n, y = (i / n) | 0, s = G[i];
+      for (let r = 0; r < o; r++) { const nx = n - 1 - y, ny = x; x = nx; y = ny; s = ((s & 3) + 1) % 4 + (s & 4); }
+      if (back) s ^= 4;
+      types[y * n + x] = s; map[i] = y * n + x;
+    }
+    for (let k = 0; k < n * n; k++) ord[k] = map[order[back ? n * n - 1 - k : k]];
+    out.push({ types, ord });
+  }
+  return out;
+}
+
+// G^k: types (N x N) and thread order, N = n^k
+function iterate(n, G, k) {
+  const order = threadOrder(n, G);
+  const P = placements(n, G, order);
+  let N = n, types = G.slice(), ord = order.slice();
+  for (let lev = 1; lev < k; lev++) {
+    const M = N * n, nt = new Uint8Array(M * M), no = new Int32Array(M * M);
+    let w = 0;
+    for (let q = 0; q < N * N; q++) {
+      const c = ord[q], X = c % N, Y = (c / N) | 0, p = P[types[c]];
+      for (let i = 0; i < n * n; i++) nt[(Y * n + ((i / n) | 0)) * M + X * n + (i % n)] = p.types[i];
+      for (let j = 0; j < n * n; j++) { const l = p.ord[j]; no[w++] = (Y * n + ((l / n) | 0)) * M + X * n + (l % n); }
+    }
+    N = M; types = nt; ord = no;
+  }
+  return { N, types, ord };
+}
+
+/* ---------- drawing ---------- */
+const PAL = { fwd: [233, 220, 195], back: [32, 46, 70], path: "#f2b134", plate: "#12151c" };
+function fit(cv) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), w = cv.clientWidth, h = cv.clientHeight;
+  const W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  return { ctx: cv.getContext("2d"), W, H };
+}
+function hue(f) { // smooth rainbow, f in [0, 1]
+  const h = 360 * (0.62 - 0.95 * f);
+  return `hsl(${((h % 360) + 360) % 360}, 78%, 58%)`;
+}
+function hueRGB(f) {
+  const h = ((360 * (0.62 - 0.95 * f)) % 360 + 360) % 360 / 60, s = .78, l = .58;
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(h % 2 - 1)), m = l - c / 2;
+  const [r, g, b] = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+// tile fill into an N x N bitmap
+function tileImage(it, fill) {
+  const { N, types, ord } = it;
+  const oc = document.createElement("canvas"); oc.width = N; oc.height = N;
+  const cx = oc.getContext("2d"), img = cx.createImageData(N, N), d = img.data;
+  if (fill === "order") {
+    for (let q = 0; q < N * N; q++) {
+      const c = ord[q], [r, g, b] = hueRGB(q / (N * N - 1));
+      const p = 4 * ((N - 1 - ((c / N) | 0)) * N + c % N);
+      d[p] = r; d[p + 1] = g; d[p + 2] = b; d[p + 3] = 255;
+    }
+  } else {
+    for (let c = 0; c < N * N; c++) {
+      const col = types[c] >= 4 ? PAL.back : PAL.fwd;
+      const p = 4 * ((N - 1 - ((c / N) | 0)) * N + c % N);
+      d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
+    }
+  }
+  cx.putImageData(img, 0, 0);
+  return oc;
+}
+
+// polyline vertices of the thread, in plate pixels
+function drawPath(ctx, it, X0, Y0, S, upto, style) {
+  const { N, types, ord } = it, cs = S / N;
+  const total = upto ?? N * N;
+  const chunks = style === "rainbow" ? 240 : 1;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(0.6, Math.min(cs * 0.32, 4));
+  for (let ch = 0; ch < chunks; ch++) {
+    const a = Math.floor(total * ch / chunks), b = Math.floor(total * (ch + 1) / chunks);
+    if (b <= a) continue;
+    ctx.strokeStyle = style === "rainbow" ? hue(a / (N * N)) : style;
+    ctx.beginPath();
+    for (let q = a; q < b; q++) {
+      const c = ord[q], s = seg(c % N, (c / N) | 0, types[c]);
+      if (q === a) ctx.moveTo(X0 + s[0] * cs, Y0 + S - s[1] * cs);
+      ctx.lineTo(X0 + s[2] * cs, Y0 + S - s[3] * cs);
+    }
+    ctx.stroke();
+  }
+}
+
+/* ---------- state ---------- */
+const NS = Object.keys(D.motifs).map(Number).sort((a, b) => a - b);
+const state = { n: 9, mode: null, idx: 0, k: 2, fill: "order", path: "on" };
+function list() { return D.motifs[state.n][state.mode]; }
+function current() { return parse(list()[state.idx]); }
+function maxK(n) { let k = 1; while (Math.pow(n, k + 1) <= 2400) k++; return k; }
+function fmt(s) { return BigInt(s).toLocaleString("en-US"); }
+
+const big = document.getElementById("cv-big"), small = document.getElementById("cv-small"), torus = document.getElementById("cv-torus");
+let cache = { key: "", it: null, img: null };
+let tracing = null;
+
+function renderBig(upto) {
+  const { ctx, W, H } = fit(big);
+  const key = `${state.n}|${state.mode}|${state.idx}|${state.k}|${state.fill}`;
+  if (cache.key !== key) {
+    const it = iterate(state.n, current(), state.k);
+    cache = { key, it, img: state.fill === "none" ? null : tileImage(it, state.fill) };
+  }
+  const { it, img } = cache;
+  ctx.fillStyle = PAL.plate; ctx.fillRect(0, 0, W, H);
+  const S = Math.min(W, H) - 24 * (W / big.clientWidth), X0 = (W - S) / 2, Y0 = (H - S) / 2;
+  if (img) { ctx.imageSmoothingEnabled = it.N > S; ctx.drawImage(img, X0, Y0, S, S); }
+  const cs = S / it.N;
+  if (state.path === "on" && (cs >= 1.4 || upto != null)) {
+    const style = state.fill === "none" ? "rainbow" : "rgba(18,21,28,.9)";
+    drawPath(ctx, it, X0, Y0, S, upto, style);
+  }
+  document.getElementById("cap-big").textContent =
+    `G${state.k > 1 ? "^" + state.k : ""} · ${it.N}×${it.N} tiles` + (cs < 1.4 && state.path === "on" ? " · path too fine to draw" : "");
+}
+
+function renderSmall() {
+  const { ctx, W, H } = fit(small);
+  const n = state.n, G = current();
+  const it = { N: n, types: G, ord: threadOrder(n, G) };
+  ctx.fillStyle = PAL.plate; ctx.fillRect(0, 0, W, H);
+  const S = Math.min(W, H) - 28 * (W / small.clientWidth), X0 = (W - S) / 2, Y0 = (H - S) / 2, cs = S / n;
+  for (let c = 0; c < n * n; c++) {
+    const x = c % n, y = (c / n) | 0, col = G[c] >= 4 ? PAL.back : PAL.fwd;
+    ctx.fillStyle = `rgb(${col})`;
+    ctx.fillRect(X0 + x * cs, Y0 + S - (y + 1) * cs, cs + .5, cs + .5);
+  }
+  ctx.strokeStyle = "rgba(120,130,150,.35)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= n; i++) { ctx.moveTo(X0 + i * cs, Y0); ctx.lineTo(X0 + i * cs, Y0 + S); ctx.moveTo(X0, Y0 + i * cs); ctx.lineTo(X0 + S, Y0 + i * cs); }
+  ctx.stroke();
+  drawPath(ctx, it, X0, Y0, S, null, "rainbow");
+  // binding ticks: a short mark from each segment's midpoint into its own tile
+  ctx.strokeStyle = "rgba(242,177,52,.9)"; ctx.lineWidth = Math.max(1, cs * .06);
+  ctx.beginPath();
+  for (let c = 0; c < n * n; c++) {
+    const x = c % n, y = (c / n) | 0, s = seg(x, y, G[c]);
+    const mx = (s[0] + s[2]) / 2, my = (s[1] + s[3]) / 2, tx = x + .5 - mx, ty = y + .5 - my;
+    ctx.moveTo(X0 + mx * cs, Y0 + S - my * cs); ctx.lineTo(X0 + (mx + tx * .32) * cs, Y0 + S - (my + ty * .32) * cs);
+  }
+  ctx.stroke();
+  // a and b
+  ctx.fillStyle = "#fff";
+  for (const [vx, lab] of [[0, "a"], [n, "b"]]) { ctx.beginPath(); ctx.arc(X0 + vx * cs, Y0 + S, Math.max(3, cs * .12), 0, 7); ctx.fill(); }
+  document.getElementById("cap-small").textContent = `G · ${n}×${n} · ${list()[state.idx].length} tiles`;
+}
+
+function renderTorus() {
+  const { ctx, W, H } = fit(torus);
+  const n = state.n, G = current(), ord = threadOrder(n, G);
+  const it = { N: n, types: G, ord };
+  ctx.fillStyle = PAL.plate; ctx.fillRect(0, 0, W, H);
+  const S = (Math.min(W, H) - 20 * (W / torus.clientWidth)) / 3, X0 = (W - 3 * S) / 2, Y0 = (H - 3 * S) / 2, cs = S / n;
+  const bits = state.mode + state.mode.slice(0, -1).split("").reverse().join("");
+  for (let by = 0; by < 3; by++) for (let bx = 0; bx < 3; bx++) {
+    const ox = X0 + bx * S, oy = Y0 + (2 - by) * S, centre = bx === 1 && by === 1;
+    ctx.globalAlpha = centre ? 1 : 0.38;
+    for (let c = 0; c < n * n; c++) {
+      const x = c % n, y = (c / n) | 0, ring = x === 0 || y === 0 || x === n - 1 || y === n - 1;
+      ctx.fillStyle = ring ? "#5b6b8c" : (centre ? "#e4d6bc" : "#3a4256");
+      if (ring && centre && x === 0 && bits[y] === "1") ctx.fillStyle = "#f2b134";
+      ctx.fillRect(ox + x * cs, oy + S - (y + 1) * cs, cs + .5, cs + .5);
+    }
+    drawPath(ctx, it, ox, oy, S, null, centre ? "#0d0f14" : "#c9ccd6");
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "rgba(242,177,52,.85)"; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+  ctx.strokeRect(X0 + S, Y0 + S, S, S); ctx.setLineDash([]);
+}
+
+function renderGallery() {
+  const g = document.getElementById("gallery"), L = list();
+  const shown = Math.min(L.length, 48);
+  let start = Math.max(0, Math.min(state.idx - 6, L.length - shown));
+  g.innerHTML = "";
+  for (let j = start; j < start + shown; j++) {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("aria-label", `Motif ${j + 1}`);
+    if (j === state.idx) b.setAttribute("aria-current", "true");
+    const cv = document.createElement("canvas"); b.appendChild(cv); g.appendChild(b);
+    b.addEventListener("click", () => { state.idx = j; update(); document.getElementById("big").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" }); });
+    setTimeout(() => {
+      const { ctx, W, H } = fit(cv);
+      const G = parse(L[j]), it = { N: state.n, types: G, ord: threadOrder(state.n, G) };
+      const img = tileImage(it, "parity"), pad = Math.round(W * .06), S = W - 2 * pad;
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(img, pad, pad, S, S);
+      drawPath(ctx, it, pad, pad, S, null, "rainbow");
+    }, 10 + 4 * (j - start));
+  }
+  const m = D.counts[state.n];
+  const total = m ? m.counts[m.modes.indexOf(state.mode)] : null;
+  document.getElementById("gal-meta").textContent =
+    `${state.n}×${state.n}, mode ${state.mode}: showing ${start + 1}–${start + shown} of ${L.length.toLocaleString("en-US")}` +
+    (total && BigInt(total) > BigInt(L.length) ? ` (a random sample of ${fmt(total)})` : "");
+}
+
+function update() {
+  const L = list();
+  document.getElementById("pos").textContent = `${state.idx + 1} / ${L.length.toLocaleString("en-US")}`;
+  const kEl = document.getElementById("k"), mk = maxK(state.n);
+  kEl.max = mk; if (state.k > mk) state.k = mk; kEl.value = state.k;
+  const N = Math.pow(state.n, state.k);
+  document.getElementById("k-out").textContent = `G${state.k > 1 ? "^" + state.k : ""} (${N}×${N})`;
+  const m = D.counts[state.n];
+  const c = m.counts[m.modes.indexOf(state.mode)];
+  document.getElementById("count-line").innerHTML = `This mode: <b>${fmt(c)}</b> motifs · all modes, ${state.n}×${state.n}: <b>${fmt(m.counts.reduce((s, v) => s + BigInt(v), 0n))}</b>`;
+  if (tracing) { cancelAnimationFrame(tracing); tracing = null; }
+  renderBig(); renderSmall(); renderTorus(); renderGallery();
+}
+
+function setN(n) {
+  state.n = n; state.mode = D.counts[n].modes.find(m => D.motifs[n][m] && D.motifs[n][m].length) ;
+  // start on the most populous mode that has motifs
+  let best = null;
+  for (const m of D.counts[n].modes) if (D.motifs[n][m] && D.motifs[n][m].length && (!best || BigInt(D.counts[n].counts[D.counts[n].modes.indexOf(m)]) > BigInt(D.counts[n].counts[D.counts[n].modes.indexOf(best)]))) best = m;
+  state.mode = best; state.idx = 0;
+  state.k = Math.min(maxK(n), n <= 7 ? 3 : 2);
+  const sel = document.getElementById("sel-mode");
+  sel.innerHTML = D.counts[n].modes.filter(m => D.motifs[n][m]).map((m, i) =>
+    `<option value="${m}"${m === state.mode ? " selected" : ""}>${n}<sub></sub>${m} · ${fmt(D.counts[n].counts[D.counts[n].modes.indexOf(m)])}</option>`).join("");
+  document.querySelectorAll("#seg-n button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === n)));
+  update();
+}
+
+/* ---------- controls ---------- */
+document.getElementById("seg-n").innerHTML = NS.map(n => `<button type="button" data-v="${n}">${n}×${n}</button>`).join("");
+document.getElementById("seg-n").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setN(+b.dataset.v); });
+document.getElementById("sel-mode").addEventListener("change", e => { state.mode = e.target.value; state.idx = 0; update(); });
+document.getElementById("prev").addEventListener("click", () => { state.idx = (state.idx - 1 + list().length) % list().length; update(); });
+document.getElementById("next").addEventListener("click", () => { state.idx = (state.idx + 1) % list().length; update(); });
+document.getElementById("rand").addEventListener("click", () => { state.idx = Math.floor(Math.random() * list().length); update(); });
+document.getElementById("k").addEventListener("input", e => { state.k = +e.target.value; update(); });
+for (const [id, key] of [["seg-fill", "fill"], ["seg-path", "path"]]) {
+  document.getElementById(id).addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    state[key] = b.dataset.v;
+    document.querySelectorAll(`#${id} button`).forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    renderBig();
+  });
+}
+document.getElementById("trace").addEventListener("click", () => {
+  if (tracing) { cancelAnimationFrame(tracing); tracing = null; renderBig(); return; }
+  const prevPath = state.path; state.path = "on";
+  const total = cache.it ? cache.it.N * cache.it.N : 1, dur = reduceMotion ? 1 : 5000, t0 = performance.now();
+  const step = now => {
+    const f = Math.min(1, (now - t0) / dur);
+    renderBig(Math.max(1, Math.floor(total * f)));
+    if (f < 1) tracing = requestAnimationFrame(step); else { tracing = null; state.path = prevPath; renderBig(); }
+  };
+  tracing = requestAnimationFrame(step);
+});
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { renderBig(); renderSmall(); renderTorus(); }, 150); });
+
+/* ---------- counts table ---------- */
+{
+  const known = { 5: true, 7: true, 9: true, 11: true };
+  const rows = [[1, "1×1", "1", null], [3, "3×3", "0", null]];
+  let h = rows.map(([g, lab, v]) => `<tr><td>${(g - 1) / 2}</td><td>${lab}</td><td class="num">${v}</td><td class="modes">${g === 1 ? "the single tile" : "none (McKenna)"}</td></tr>`).join("");
+  for (const n of Object.keys(D.counts).map(Number).sort((a, b) => a - b)) {
+    const m = D.counts[n], done = m.counts.every(v => v != null);
+    const vals = m.counts.map(v => v == null ? null : BigInt(v));
+    const total = done ? vals.reduce((s, v) => s + v, 0n) : null;
+    const lmax = Math.max(...vals.filter(v => v != null).map(v => v.toString().length - 1 + Math.log10(+("0." + v.toString().slice(0, 15)) * 10)));
+    const bars = m.modes.map((md, i) => {
+      if (vals[i] == null) return `<div class="bar"><span>${md}</span><span>running…</span></div>`;
+      const lv = vals[i] > 0n ? Math.log10(Number(vals[i])) : 0;
+      return `<div class="bar"><span>${md}</span><i style="width:${Math.max(1, 100 * lv / Math.max(lmax, 1))}%" title="${fmt(vals[i])}"></i></div>`;
+    }).join("");
+    h += `<tr><td>${(n - 1) / 2}</td><td>${n}×${n}</td><td class="num">${total != null ? fmt(total) : "in progress"}${known[n] ? "" : '<span class="tag">new</span>'}</td>
+      <td class="modes">${m.modes.length} mode${m.modes.length > 1 ? "s" : ""}<div class="bars">${bars}</div></td></tr>`;
+  }
+  document.getElementById("counts").innerHTML = h;
+}
+
+setN(9);
+})();
+</script>
+</html>
