@@ -89,6 +89,7 @@ input[type=range] { accent-color: var(--accent); width: 130px; }
 .howto { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
 @media (max-width: 860px) { .howto { grid-template-columns: minmax(0, 1fr); } }
 #demo { aspect-ratio: 1; }
+#demo .cap { top: 10px; bottom: auto; }
 .howto-text { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 2px; }
 .steps li { counter-increment: step; }
@@ -581,8 +582,9 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
   function frame() {
     const { ctx, W, H: Hh } = fit(cv);
     ctx.fillStyle = PAL.plate; ctx.fillRect(0, 0, W, Hh);
-    const S = Math.min(W, Hh) - 48 * (W / cv.clientWidth);
-    return { ctx, S, X0: (W - S) / 2, Y0: (Hh - S) / 2, W, Hh };
+    const k = W / cv.clientWidth, top = 34 * k, bottom = 46 * k;    // room for the caption above and a, b below
+    const S = Math.min(W - 2 * bottom, Hh - top - bottom);
+    return { ctx, S, X0: (W - S) / 2, Y0: top, W, Hh };
   }
   function grid(ctx, N, X0, Y0, S, alpha) {
     const cs = S / N;
@@ -616,7 +618,7 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
     ctx.globalAlpha = alpha; ctx.fillStyle = "#fff"; ctx.font = `${Math.round(S / 26)}px JetBrains Mono, monospace`;
     for (const [x, lab] of [[0, "a"], [S, "b"]]) {
       ctx.beginPath(); ctx.arc(X0 + x, Y0 + S, S / 80, 0, 7); ctx.fill();
-      ctx.fillText(lab, X0 + x - S / 90, Y0 + S + S / 22);
+      ctx.textAlign = "center"; ctx.fillText(lab, X0 + x, Y0 + S + S / 50 + S / 26); ctx.textAlign = "start";
     }
     ctx.globalAlpha = 1;
   }
