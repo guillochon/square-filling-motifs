@@ -85,6 +85,25 @@ input[type=range] { accent-color: var(--accent); width: 130px; }
 .gallery button[aria-current="true"] { border-color: var(--accent); }
 .gallery canvas { width: 100%; height: 100%; display: block; }
 
+/* step-by-step */
+.howto { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .howto { grid-template-columns: minmax(0, 1fr); } }
+#demo { aspect-ratio: 1; }
+.howto-text { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 2px; }
+.steps li { counter-increment: step; }
+.steps button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: 1.9em 1fr; gap: 8px;
+  padding: 7px 10px; border-radius: 6px; color: var(--muted); }
+.steps button::before { content: counter(step); font-family: var(--font-mono); font-size: 12px; width: 1.6em; height: 1.6em; border-radius: 50%;
+  display: grid; place-items: center; border: 1px solid var(--line); margin-top: 1px; }
+.steps button:hover { background: var(--accent-soft); }
+.steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.steps button[aria-current="step"] { background: var(--surface); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.steps button[aria-current="step"]::before { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.steps b { display: block; color: var(--fg); font-weight: 600; }
+.steps .more { display: none; font-size: 14px; margin-top: 2px; }
+.steps button[aria-current="step"] .more { display: block; }
+
 /* explanation */
 .explain { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
 @media (max-width: 860px) { .explain { grid-template-columns: minmax(0, 1fr); } }
@@ -138,6 +157,20 @@ footer { color: var(--muted); font-size: 14px; display: flex; flex-direction: co
           <button type="button" data-v="on" aria-pressed="true">Show</button><button type="button" data-v="off">Hide</button></div>
           <button class="btn" id="trace" type="button">Trace it</button></div>
         <p class="meta" id="count-line"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="howto" aria-labelledby="how-h">
+    <div class="plate" id="demo"><canvas id="cv-demo" aria-label="Step-by-step drawing of a motif and its iterates"></canvas><span class="cap" id="cap-demo"></span></div>
+    <div class="howto-text">
+      <h2 id="how-h">How a motif is drawn, step by step</h2>
+      <ol class="steps" id="steps"></ol>
+      <div class="row">
+        <button class="btn" id="demo-back" type="button" aria-label="Previous step">← Back</button>
+        <button class="btn primary" id="demo-play" type="button">Play</button>
+        <button class="btn" id="demo-next" type="button" aria-label="Next step">Next →</button>
+        <button class="btn" id="demo-replay" type="button">Replay step</button>
       </div>
     </div>
   </section>
@@ -512,6 +545,179 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
       <td class="modes">${m.modes.length} mode${m.modes.length > 1 ? "s" : ""}<div class="bars">${bars}</div></td></tr>`;
   }
   document.getElementById("counts").innerHTML = h;
+}
+
+/* ---------- step-by-step demo ---------- */
+{
+  const cv = document.getElementById("cv-demo"), cap = document.getElementById("cap-demo");
+  const E = parse(D.motifs[5]["001"][0]);                 // McKenna's E motif, the only 5x5 one
+  const H = parse("lrBB");                                // the Hilbert curve's 2x2 motif (cells row-major)
+  const it = k => iterate(5, E, k), E1 = { N: 5, types: E, ord: threadOrder(5, E) };
+  const E2 = it(2), E3 = it(3), E4 = it(4);
+  const H4 = iterate(2, H, 4);
+
+  // lattice points where the path meets itself: two departures or arrivals, or one edge used twice
+  function contacts(g) {
+    const { N, types } = g, outs = new Map(), ins = new Map(), edges = new Map(), bad = [];
+    const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+    for (let c = 0; c < N * N; c++) {
+      const s = seg(c % N, (c / N) | 0, types[c]);
+      bump(outs, s[0] * 1e5 + s[1]); bump(ins, s[2] * 1e5 + s[3]);
+      const a = Math.min(s[0] * 1e5 + s[1], s[2] * 1e5 + s[3]), b = Math.max(s[0] * 1e5 + s[1], s[2] * 1e5 + s[3]);
+      bump(edges, a * 1e10 + b);
+    }
+    for (const m of [outs, ins]) for (const [k, v] of m) if (v > 1) bad.push([Math.floor(k / 1e5), k % 1e5]);
+    for (const [k, v] of edges) if (v > 1) {
+      const a = Math.floor(k / 1e10), b = k % 1e10;
+      bad.push([(Math.floor(a / 1e5) + Math.floor(b / 1e5)) / 2, (a % 1e5 + b % 1e5) / 2]);
+    }
+    return bad;
+  }
+  const Hbad = contacts(H4), Ebad = contacts(E3);
+
+  const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  function frame() {
+    const { ctx, W, H: Hh } = fit(cv);
+    ctx.fillStyle = PAL.plate; ctx.fillRect(0, 0, W, Hh);
+    const S = Math.min(W, Hh) - 48 * (W / cv.clientWidth);
+    return { ctx, S, X0: (W - S) / 2, Y0: (Hh - S) / 2, W, Hh };
+  }
+  function grid(ctx, N, X0, Y0, S, alpha) {
+    const cs = S / N;
+    ctx.strokeStyle = `rgba(170,180,200,${.7 * alpha})`; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) { ctx.moveTo(X0 + i * cs, Y0); ctx.lineTo(X0 + i * cs, Y0 + S); ctx.moveTo(X0, Y0 + i * cs); ctx.lineTo(X0 + S, Y0 + i * cs); }
+    ctx.stroke();
+  }
+  // shade the first `upto` tiles in thread order by side of the path; ticks mark each tile's own segment
+  function tiles(ctx, g, X0, Y0, S, upto, alpha, ticks) {
+    const { N, types, ord } = g, cs = S / N;
+    ctx.globalAlpha = alpha;
+    for (let q = 0; q < upto; q++) {
+      const c = ord[q], x = c % N, y = (c / N) | 0, col = types[c] >= 4 ? PAL.back : PAL.fwd;
+      ctx.fillStyle = `rgb(${col})`;
+      ctx.fillRect(X0 + x * cs, Y0 + S - (y + 1) * cs, cs + .5, cs + .5);
+    }
+    ctx.globalAlpha = 1;
+    if (!ticks) return;
+    ctx.strokeStyle = PAL.path; ctx.lineWidth = Math.max(1.5, cs * .07); ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let q = 0; q < upto; q++) {
+      const c = ord[q], x = c % N, y = (c / N) | 0, s = seg(x, y, types[c]);
+      const mx = (s[0] + s[2]) / 2, my = (s[1] + s[3]) / 2;
+      ctx.moveTo(X0 + mx * cs, Y0 + S - my * cs);
+      ctx.lineTo(X0 + (mx + (x + .5 - mx) * .38) * cs, Y0 + S - (my + (y + .5 - my) * .38) * cs);
+    }
+    ctx.stroke();
+  }
+  function ends(ctx, X0, Y0, S, alpha) {
+    ctx.globalAlpha = alpha; ctx.fillStyle = "#fff"; ctx.font = `${Math.round(S / 26)}px JetBrains Mono, monospace`;
+    for (const [x, lab] of [[0, "a"], [S, "b"]]) {
+      ctx.beginPath(); ctx.arc(X0 + x, Y0 + S, S / 80, 0, 7); ctx.fill();
+      ctx.fillText(lab, X0 + x - S / 90, Y0 + S + S / 22);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function rings(ctx, pts, N, X0, Y0, S, color, f) {
+    const cs = S / N;
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, S / 220);
+    for (const [x, y] of pts) { ctx.beginPath(); ctx.arc(X0 + x * cs, Y0 + S - y * cs, Math.max(6, cs * .55) * f, 0, 7); ctx.stroke(); }
+  }
+  function curveFill(ctx, g, X0, Y0, S, alpha) {
+    ctx.globalAlpha = alpha; ctx.imageSmoothingEnabled = g.N > S;
+    ctx.drawImage(tileImage(g, "order"), X0, Y0, S, S); ctx.globalAlpha = 1;
+  }
+
+  const STEPS = [
+    { title: "Start with a grid of tiles", dur: 1500,
+      text: "Cut a square into a 5×5 grid of tiles. The path will run along the grid lines from the bottom-left corner, a, to the bottom-right corner, b.",
+      draw(t) { const f = frame(); grid(f.ctx, 5, f.X0, f.Y0, f.S, ease(t)); ends(f.ctx, f.X0, f.Y0, f.S, ease(t)); return "5×5 tiles"; } },
+    { title: "Draw the path, one segment per tile", dur: 9000,
+      text: "Every step of the path runs along a side of some tile, and that tile owns it (the small tick). A tile can own only one segment, so the path has exactly 25 steps.",
+      draw(t) {
+        const f = frame(), q = Math.min(25, Math.floor(t * 25.999));
+        grid(f.ctx, 5, f.X0, f.Y0, f.S, 1);
+        tiles(f.ctx, E1, f.X0, f.Y0, f.S, q, .9, true);
+        drawPath(f.ctx, E1, f.X0, f.Y0, f.S, q, "rainbow"); ends(f.ctx, f.X0, f.Y0, f.S, 1);
+        return `${q} of 25 tiles used`;
+      } },
+    { title: "Every tile owns exactly one segment", dur: 1200,
+      text: "Light tiles lie on one side of the path and dark tiles on the other; the direction of a tile's segment tells which. This is the motif: McKenna's E, the only one on the 5×5 grid.",
+      draw() { const f = frame(); tiles(f.ctx, E1, f.X0, f.Y0, f.S, 25, 1, true); grid(f.ctx, 5, f.X0, f.Y0, f.S, .6);
+        drawPath(f.ctx, E1, f.X0, f.Y0, f.S, null, "rainbow"); ends(f.ctx, f.X0, f.Y0, f.S, 1); return "the motif G"; } },
+    { title: "Replace every tile by a copy of the motif", dur: 9000,
+      text: "Each tile gets a shrunken copy of the whole motif, turned so that it starts and ends where the tile's own segment does and runs the same way. The copies go in here one at a time, in path order.",
+      draw(t) {
+        const f = frame(), q = Math.min(25, Math.floor(t * 25.999)), cs = f.S / 5;
+        tiles(f.ctx, E1, f.X0, f.Y0, f.S, 25, .28, false); grid(f.ctx, 5, f.X0, f.Y0, f.S, .5);
+        drawPath(f.ctx, E1, f.X0, f.Y0, f.S, null, "rgba(242,177,52,.35)");
+        drawPath(f.ctx, E2, f.X0, f.Y0, f.S, q * 25, "rainbow");
+        if (q < 25) {
+          const c = E1.ord[q], x = c % 5, y = (c / 5) | 0, s = seg(x, y, E[c]);
+          f.ctx.strokeStyle = "#fff"; f.ctx.lineWidth = 2; f.ctx.strokeRect(f.X0 + x * cs, f.Y0 + f.S - (y + 1) * cs, cs, cs);
+          f.ctx.strokeStyle = PAL.path; f.ctx.lineWidth = Math.max(3, cs * .08);
+          f.ctx.beginPath(); f.ctx.moveTo(f.X0 + s[0] * cs, f.Y0 + f.S - s[1] * cs); f.ctx.lineTo(f.X0 + s[2] * cs, f.Y0 + f.S - s[3] * cs); f.ctx.stroke();
+        }
+        return `${q} of 25 copies placed`;
+      } },
+    { title: "The copies join into one longer path", dur: 1500,
+      text: "Each copy ends where the next begins, so together they make a single path: a new motif on a 25×25 grid. Coloured along the curve, each copy keeps to its own tile.",
+      draw(t) { const f = frame(); curveFill(f.ctx, E2, f.X0, f.Y0, f.S, ease(t)); drawPath(f.ctx, E2, f.X0, f.Y0, f.S, null, "rgba(18,21,28,.9)"); return "G², 25×25 tiles"; } },
+    { title: "Repeat", dur: 6000,
+      text: "Do it again: 125×125 tiles, then 625×625. The path wiggles ever more finely and, in the limit, passes through every point of the square.",
+      draw(t) {
+        const f = frame();
+        if (t < .55) { const u = t / .55; curveFill(f.ctx, E3, f.X0, f.Y0, f.S, .9); drawPath(f.ctx, E3, f.X0, f.Y0, f.S, Math.max(1, Math.floor(E3.N * E3.N * ease(u))), "rgba(18,21,28,.9)"); return "G³, 125×125 tiles"; }
+        curveFill(f.ctx, E4, f.X0, f.Y0, f.S, 1); return "G⁴, 625×625 tiles";
+      } },
+    { title: "The catch: copies can bump into each other", dur: 3000,
+      text: "The copies sit side by side, and their paths can meet. Hilbert's famous 2×2 motif does: after a few rounds its path touches itself again and again (red circles), even though the limit still fills the square.",
+      draw(t) { const f = frame(); curveFill(f.ctx, H4, f.X0, f.Y0, f.S, .55); drawPath(f.ctx, H4, f.X0, f.Y0, f.S, null, "#e9e4d6");
+        rings(f.ctx, Hbad, H4.N, f.X0, f.Y0, f.S, "#ff4d6d", .6 + .4 * ease(t)); return `Hilbert motif, 4 rounds: ${Hbad.length} contacts`; } },
+    { title: "Good motifs never do", dur: 2500,
+      text: "McKenna calls a motif globally self-avoiding if no round ever makes it touch itself. The 5×5 motif has no contacts at any depth (checked here at 125×125). These are the motifs this page counts.",
+      draw(t) { const f = frame(); curveFill(f.ctx, E3, f.X0, f.Y0, f.S, .55); drawPath(f.ctx, E3, f.X0, f.Y0, f.S, null, "#e9e4d6");
+        const fs = Math.round(f.S / 14), label = `${Ebad.length} contacts`;
+        f.ctx.font = `600 ${fs}px Karla, sans-serif`;
+        const w = f.ctx.measureText(label).width;
+        f.ctx.globalAlpha = ease(t);
+        f.ctx.fillStyle = "rgba(18,21,28,.88)"; f.ctx.fillRect(f.X0 + f.S / 2 - w / 2 - fs * .6, f.Y0 + f.S / 2 - fs, w + fs * 1.2, fs * 1.6);
+        f.ctx.fillStyle = "#5fd0b4"; f.ctx.fillText(label, f.X0 + f.S / 2 - w / 2, f.Y0 + f.S / 2 + fs * .3);
+        f.ctx.globalAlpha = 1; return "G³: no contacts"; } },
+  ];
+
+  const list = document.getElementById("steps");
+  list.innerHTML = STEPS.map((s, i) => `<li><button type="button" data-i="${i}"><span><b>${s.title}</b><span class="more">${s.text}</span></span></button></li>`).join("");
+  let cur = 0, t0 = 0, raf = 0, playing = false, hold = 0;
+  const playBtn = document.getElementById("demo-play");
+  function show(i, animate) {
+    cur = i; cancelAnimationFrame(raf); clearTimeout(hold);
+    list.querySelectorAll("button").forEach((b, j) => b.toggleAttribute("aria-current", false) || (j === i && b.setAttribute("aria-current", "step")));
+    if (!animate || reduceMotion) { cap.textContent = STEPS[i].draw(1); if (playing) hold = setTimeout(() => advance(), 2500); return; }
+    t0 = performance.now();
+    const tick = now => {
+      const t = Math.min(1, (now - t0) / STEPS[i].dur);
+      cap.textContent = STEPS[i].draw(t);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else if (playing) hold = setTimeout(() => advance(), 1800);
+    };
+    raf = requestAnimationFrame(tick);
+  }
+  function advance() {
+    if (cur + 1 < STEPS.length) show(cur + 1, true);
+    else { playing = false; playBtn.textContent = "Play"; }
+  }
+  list.addEventListener("click", e => { const b = e.target.closest("button[data-i]"); if (b) show(+b.dataset.i, true); });
+  document.getElementById("demo-next").addEventListener("click", () => show(Math.min(STEPS.length - 1, cur + 1), true));
+  document.getElementById("demo-back").addEventListener("click", () => show(Math.max(0, cur - 1), true));
+  document.getElementById("demo-replay").addEventListener("click", () => show(cur, true));
+  playBtn.addEventListener("click", () => {
+    playing = !playing; playBtn.textContent = playing ? "Pause" : "Play";
+    if (playing) show(cur === STEPS.length - 1 ? 0 : cur, true); else { clearTimeout(hold); }
+  });
+  let rd; addEventListener("resize", () => { clearTimeout(rd); rd = setTimeout(() => { if (!raf || playing === false) cap.textContent = STEPS[cur].draw(1); }, 150); });
+  show(2, false);                                          // open on the finished motif
+  window.demoFrame = (i, t) => STEPS[i].draw(t);           // draw step i at time t in [0, 1] (for testing)
 }
 
 setN(9);
