@@ -229,6 +229,8 @@ footer { color: var(--muted); font-size: 14px; display: flex; flex-direction: co
 "use strict";
 const D = window.MOTIF_DATA;
 const NAMES = "BRTLbrtl";
+// Reduced motion only turns off motion the page starts by itself (smooth scrolling); the trace and the step-by-step
+// animations run only when the viewer asks for them, so they always play.
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ---------- motif geometry ---------- */
@@ -516,7 +518,7 @@ for (const [id, key] of [["seg-fill", "fill"], ["seg-path", "path"]]) {
 document.getElementById("trace").addEventListener("click", () => {
   if (tracing) { cancelAnimationFrame(tracing); tracing = null; renderBig(); return; }
   const prevPath = state.path; state.path = "on";
-  const total = cache.it ? cache.it.N * cache.it.N : 1, dur = reduceMotion ? 1 : 5000, t0 = performance.now();
+  const total = cache.it ? cache.it.N * cache.it.N : 1, dur = 5000, t0 = performance.now();
   const step = now => {
     const f = Math.min(1, (now - t0) / dur);
     renderBig(Math.max(1, Math.floor(total * f)));
@@ -759,14 +761,15 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
 
   const list = document.getElementById("steps");
   list.innerHTML = STEPS.map((s, i) => `<li><button type="button" data-i="${i}"><span><b>${s.title}</b><span class="more">${s.text}</span></span></button></li>`).join("");
-  let cur = 0, t0 = 0, raf = 0, playing = false, hold = 0;
+  let run = 0, cur = 0, t0 = 0, raf = 0, playing = false, hold = 0;
   const playBtn = document.getElementById("demo-play");
   function show(i, animate) {
-    cur = i; cancelAnimationFrame(raf); clearTimeout(hold);
+    cur = i; cancelAnimationFrame(raf); const me = ++run;          // a newer show() stops this one clearTimeout(hold);
     list.querySelectorAll("button").forEach((b, j) => b.toggleAttribute("aria-current", false) || (j === i && b.setAttribute("aria-current", "step")));
-    if (!animate || reduceMotion) { cap.textContent = STEPS[i].draw(1); if (playing) hold = setTimeout(() => advance(), STEPS[i].dur + STEPS[i].pause); return; }
+    if (!animate) { cap.textContent = STEPS[i].draw(1); if (playing) hold = setTimeout(() => advance(), STEPS[i].dur + STEPS[i].pause); return; }
     t0 = performance.now();
     const tick = now => {
+      if (me !== run) return;
       const t = Math.min(1, (now - t0) / STEPS[i].dur);
       cap.textContent = STEPS[i].draw(t);
       if (t < 1) raf = requestAnimationFrame(tick);
