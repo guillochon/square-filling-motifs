@@ -520,7 +520,7 @@ document.getElementById("trace").addEventListener("click", () => {
   const prevPath = state.path; state.path = "on";
   const total = cache.it ? cache.it.N * cache.it.N : 1, dur = 5000, t0 = performance.now();
   const step = now => {
-    const f = Math.min(1, (now - t0) / dur);
+    const f = Math.max(0, Math.min(1, (now - t0) / dur));
     renderBig(Math.max(1, Math.floor(total * f)));
     if (f < 1) tracing = requestAnimationFrame(step); else { tracing = null; state.path = prevPath; renderBig(); }
   };
@@ -639,7 +639,8 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
   }
   // the path drawn up to a fractional number of segments f, with a pen dot at the tip
   function pathTo(ctx, g, X0, Y0, S, f, style) {
-    const { N, types, ord } = g, total = N * N, n = Math.min(total, Math.floor(f)), cs = S / N;
+    const { N, types, ord } = g, total = N * N, n = Math.max(0, Math.min(total, Math.floor(f))), cs = S / N;
+    f = Math.max(0, f);
     if (n > 0) drawPath(ctx, g, X0, Y0, S, n, style);
     if (n >= total) return;
     const c = ord[n], s = seg(c % N, (c / N) | 0, types[c]), u = f - n;
@@ -770,7 +771,8 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
     t0 = performance.now();
     const tick = now => {
       if (me !== run) return;
-      const t = Math.min(1, (now - t0) / STEPS[i].dur);
+      // Firefox stamps a frame with its start time, which can be a little before t0: clamp at 0
+      const t = Math.max(0, Math.min(1, (now - t0) / STEPS[i].dur));
       cap.textContent = STEPS[i].draw(t);
       if (t < 1) raf = requestAnimationFrame(tick);
       else if (playing) hold = setTimeout(() => advance(), STEPS[i].pause);
