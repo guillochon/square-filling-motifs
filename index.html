@@ -59,6 +59,7 @@ p { margin: 0; max-width: 70ch; }
 .plate { background: var(--plate); border-radius: 6px; position: relative; overflow: hidden; }
 .plate canvas { display: block; width: 100%; height: 100%; }
 #big { aspect-ratio: 1; max-width: 100%; }
+#cv-big { cursor: crosshair; }
 .plate .cap { position: absolute; left: 12px; bottom: 10px; font-family: var(--font-mono); font-size: 12px; color: #c9ccd6; pointer-events: none; text-shadow: 0 1px 2px #000; }
 .side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 #small { aspect-ratio: 1; }
@@ -215,7 +216,7 @@ footer { color: var(--muted); font-size: 14px; display: flex; flex-direction: co
   </section>
 
   <footer>
-    <p>Motifs up to 9×9 are all of them; 11×11 and 13×13 show uniform random samples. Every motif shown was checked with a
+    <p>Motifs up to 9×9 are all of them; 11×11 and 13×13 show uniform random samples, and 15×15 and 17×17 show random examples (from a sampler that is not uniform). Every motif shown was checked with a
       direct test that its iterates never self-contact. Terms, code and checks:
       <a href="https://github.com/guillochon/oeis-results/tree/main/A350148">oeis-results/A350148</a>.
       Motifs, modes and the two theorems used: D. M. McKenna,
@@ -378,7 +379,9 @@ function renderBig(upto) {
   const key = `${state.n}|${state.mode}|${state.idx}|${state.k}|${state.fill}`;
   if (cache.key !== key) {
     const it = iterate(state.n, current(), state.k);
-    cache = { key, it, img: state.fill === "none" ? null : tileImage(it, state.fill) };
+    const pos = new Int32Array(it.N * it.N);              // pos[cell] = its index along the path
+    for (let q = 0; q < it.ord.length; q++) pos[it.ord[q]] = q;
+    cache = { key, it, pos, img: state.fill === "none" ? null : tileImage(it, state.fill) };
   }
   const { it, img } = cache;
   ctx.fillStyle = PAL.plate; ctx.fillRect(0, 0, W, H);
@@ -391,7 +394,49 @@ function renderBig(upto) {
   }
   document.getElementById("cap-big").textContent =
     `G${state.k > 1 ? "^" + state.k : ""} · ${it.N}×${it.N} tiles` + (cs < 1.4 && state.path === "on" ? " · path too fine to draw" : "");
+  bigGeom = { X0, Y0, S, N: it.N };
+  if (upto == null) {                                     // keep a clean copy for the hover highlight
+    if (bigBase.width !== W || bigBase.height !== H) { bigBase.width = W; bigBase.height = H; }
+    bigBase.getContext("2d").drawImage(big, 0, 0);
+    if (hoverQ != null) paintHover();
+  }
 }
+
+/* hover: light up the tiles near the cursor, fading with their distance from it along the path */
+const bigBase = document.createElement("canvas");
+let bigGeom = null, hoverQ = null, hoverRaf = 0;
+function paintHover() {
+  const ctx = big.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(bigBase, 0, 0);
+  if (hoverQ == null || !cache.it) return;
+  const { X0, Y0, S, N } = bigGeom, cs = S / N, ord = cache.it.ord, total = N * N;
+  const R = Math.max(8, Math.round(total / 30));         // reach along the path, in tiles
+  const LEVELS = 12;
+  for (let lv = 0; lv < LEVELS; lv++) {                   // a few alpha levels, fainter first
+    const a = Math.pow((lv + 1) / LEVELS, 1.6) * .8;
+    ctx.fillStyle = `rgba(255,246,222,${a})`;
+    for (let d = -R; d <= R; d++) {
+      const f = 1 - Math.abs(d) / (R + 1);
+      if (Math.min(LEVELS - 1, Math.floor(f * LEVELS)) !== lv) continue;
+      const q = hoverQ + d;
+      if (q < 0 || q >= total) continue;
+      const c = ord[q];
+      ctx.fillRect(X0 + (c % N) * cs, Y0 + S - ((c / N | 0) + 1) * cs, cs + .5, cs + .5);
+    }
+  }
+}
+big.addEventListener("pointermove", e => {
+  if (tracing || !bigGeom || !cache.pos) return;
+  const k = big.width / big.clientWidth, px = e.offsetX * k, py = e.offsetY * k;
+  const { X0, Y0, S, N } = bigGeom, cs = S / N;
+  const x = Math.floor((px - X0) / cs), y = N - 1 - Math.floor((py - Y0) / cs);
+  const q = x >= 0 && x < N && y >= 0 && y < N ? cache.pos[y * N + x] : null;
+  if (q === hoverQ) return;
+  hoverQ = q;
+  cancelAnimationFrame(hoverRaf); hoverRaf = requestAnimationFrame(paintHover);
+});
+big.addEventListener("pointerleave", () => { hoverQ = null; cancelAnimationFrame(hoverRaf); hoverRaf = requestAnimationFrame(paintHover); });
 
 function renderSmall() {
   const { ctx, W, H } = fit(small);
@@ -470,7 +515,7 @@ function renderGallery() {
   const total = m ? m.counts[m.modes.indexOf(state.mode)] : null;
   document.getElementById("gal-meta").textContent =
     `${state.n}×${state.n}, mode ${state.mode}: showing ${start + 1}–${start + shown} of ${L.length.toLocaleString("en-US")}` +
-    (total && BigInt(total) > BigInt(L.length) ? ` (a random sample of ${fmt(total)})` : "");
+    (total && BigInt(total) > BigInt(L.length) ? (state.n >= 15 ? ` (random examples out of ${fmt(total)})` : ` (a random sample of ${fmt(total)})`) : "");
 }
 
 function update() {
