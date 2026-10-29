@@ -794,7 +794,7 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
     if (playing) show(cur === STEPS.length - 1 ? 0 : cur, true); else { clearTimeout(hold); }
   });
   let rd; addEventListener("resize", () => { clearTimeout(rd); rd = setTimeout(() => { if (!raf || playing === false) cap.textContent = STEPS[cur].draw(1); }, 150); });
-  show(2, false);                                          // open on the finished motif
+  show(0, false);                                          // open on step 1 (its finished frame)
   window.demoFrame = (i, t) => STEPS[i].draw(t);           // draw step i at time t in [0, 1] (for testing)
 }
 
