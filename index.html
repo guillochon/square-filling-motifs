@@ -795,6 +795,18 @@ let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() 
   });
   let rd; addEventListener("resize", () => { clearTimeout(rd); rd = setTimeout(() => { if (!raf || playing === false) cap.textContent = STEPS[cur].draw(1); }, 150); });
   show(0, false);                                          // open on step 1 (its finished frame)
+  // Play by itself the first time the section is half in view, unless the viewer has already used it.
+  // (Deliberately not gated on prefers-reduced-motion: the site's author wants it to start on scroll.)
+  let touched = false;
+  document.querySelector(".howto").addEventListener("click", () => { touched = true; }, true);
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver(es => {
+      if (!es.some(e => e.isIntersecting)) return;
+      io.disconnect();
+      if (!touched && !playing) playBtn.click();
+    }, { threshold: .5 });
+    io.observe(document.getElementById("demo"));
+  }
   window.demoFrame = (i, t) => STEPS[i].draw(t);           // draw step i at time t in [0, 1] (for testing)
 }
 
